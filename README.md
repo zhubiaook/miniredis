@@ -1,1 +1,1 @@
-# miniredis
+# MiniRedis
