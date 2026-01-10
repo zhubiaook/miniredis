@@ -3,8 +3,9 @@ package main
 import (
 	"flag"
 	"fmt"
+	"net"
 
-	"github.com/zhubiaook/miniredis/mrctl/client"
+	"github.com/zhubiaook/miniredis/pkg/encoding"
 )
 
 func main() {
@@ -23,21 +24,23 @@ func main() {
 		return
 	}
 
-	opts := client.Options{
-		Addr: *addr,
-	}
-
-	cli, err := client.NewClient(opts)
+	conn, err := net.Dial("tcp", *addr)
 	if err != nil {
 		fmt.Fprintf(flag.CommandLine.Output(), "Error: failed to connect to %s: %v\n", *addr, err)
 		return
 	}
-	defer cli.Close()
+	defer conn.Close()
 
-	resp, err := cli.Do(args...)
-	if err != nil {
-		fmt.Fprintf(flag.CommandLine.Output(), "Error: command failed: %v\n", err)
+	if err := encoding.EncodeWrite(conn, args); err != nil {
+		fmt.Printf("Error: failed to encode command: %v\n", err)
 		return
 	}
-	fmt.Println(string(resp))
+
+	var out []string
+	if err := encoding.DecodeRead(conn, &out); err != nil {
+		fmt.Printf("Error: failed to decode response: %v\n", err)
+		return
+	}
+
+	fmt.Println(out)
 }
