@@ -67,21 +67,48 @@ func DecodeRead(in io.Reader, out *[]string) error {
 			}
 			token = token[:len(token)-2]
 			if token[0] != TypeBulkString {
-				return fmt.Errorf("read error: %w", err)
+				return fmt.Errorf("unexpected type: expected bulk string, got %c", token[0])
 			}
 			bukLen, err := strconv.Atoi(token[1:])
 			if err != nil {
 				return fmt.Errorf("read error: %w", err)
 			}
 			buk := make([]byte, bukLen+2)
-			if _, err := r.Read(buk); err != nil {
+			if _, err := io.ReadFull(r, buk); err != nil {
 				return fmt.Errorf("read error: %w", err)
 			}
 			buk = buk[:bukLen]
 			rst = append(rst, string(buk))
 		}
+	case TypeBulkString:
+		token, err := r.ReadString('\n')
+		if err != nil {
+			return fmt.Errorf("read error: %w", err)
+		}
+		token = token[:len(token)-2]
+		bukLen, err := strconv.Atoi(token)
+		if err != nil {
+			return fmt.Errorf("read error: %w", err)
+		}
+		if bukLen <= 0 {
+			rst = append(rst, "(nil)")
+			break
+		}
+		buk := make([]byte, bukLen+2)
+		if _, err := io.ReadFull(r, buk); err != nil {
+			return fmt.Errorf("read error: %w", err)
+		}
+		buk = buk[:bukLen]
+		rst = append(rst, string(buk))
+	case TypeError:
+		token, err := r.ReadString('\n')
+		if err != nil {
+			return fmt.Errorf("read error: %w", err)
+		}
+		token = token[:len(token)-2]
+		rst = append(rst, token)
 	default:
-		return fmt.Errorf("invalid type")
+		return fmt.Errorf("invalid type: %c", b)
 	}
 
 	*out = rst

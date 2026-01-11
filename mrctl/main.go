@@ -1,46 +1,72 @@
 package main
 
 import (
+	"bufio"
 	"flag"
 	"fmt"
-	"net"
-
-	"github.com/zhubiaook/miniredis/pkg/encoding"
+	"os"
+	"strings"
 )
 
 func main() {
 	addr := flag.String("addr", "127.0.0.1:6379", "redis server address")
 	flag.Parse()
 
-	args := flag.Args()
-	if len(args) == 0 {
-		fmt.Fprintf(flag.CommandLine.Output(), "Usage: %s [options] <command> [args...]\n", "mrctl")
-		fmt.Fprintf(flag.CommandLine.Output(), "\nOptions:\n")
-		flag.PrintDefaults()
-		fmt.Fprintf(flag.CommandLine.Output(), "\nExamples:\n")
-		fmt.Fprintf(flag.CommandLine.Output(), "  mrctl GET mykey\n")
-		fmt.Fprintf(flag.CommandLine.Output(), "  mrctl SET mykey value\n")
-		fmt.Fprintf(flag.CommandLine.Output(), "  mrctl -addr localhost:6379 PING\n")
-		return
+	opt := Options{
+		Addr: *addr,
 	}
-
-	conn, err := net.Dial("tcp", *addr)
+	client, err := NewClient(opt)
 	if err != nil {
-		fmt.Fprintf(flag.CommandLine.Output(), "Error: failed to connect to %s: %v\n", *addr, err)
-		return
-	}
-	defer conn.Close()
-
-	if err := encoding.EncodeWrite(conn, args); err != nil {
-		fmt.Printf("Error: failed to encode command: %v\n", err)
+		fmt.Println(err)
 		return
 	}
 
-	var out []string
-	if err := encoding.DecodeRead(conn, &out); err != nil {
-		fmt.Printf("Error: failed to decode response: %v\n", err)
+	// non-interactive mode
+	args := flag.Args()
+	if len(args) > 0 {
+		out, err := client.Do(args)
+		if err != nil {
+			fmt.Printf("Error: %v\n", err)
+			return
+		}
+		fmt.Println(out)
 		return
 	}
 
-	fmt.Println(out)
+	// interactive mode
+	scanner := bufio.NewScanner(os.Stdin)
+	for {
+		fmt.Print("> ")
+		if !scanner.Scan() {
+			break
+		}
+
+		line := strings.TrimSpace(scanner.Text())
+		if line == "" {
+			continue
+		}
+
+		if strings.ToUpper(line) == "EXIT" {
+			fmt.Println("Goodbye!")
+			break
+		}
+
+		args := strings.Fields(line)
+		list, err := client.Do(args)
+		if err != nil {
+			fmt.Printf("Error: %v\n", err)
+			continue
+		}
+		if len(list) == 1 {
+			fmt.Println(list[0])
+			continue
+		}
+		for i, v := range list {
+			fmt.Printf("%d) %q\n", i+1, v)
+		}
+	}
+
+	if scanner.Err() != nil {
+		fmt.Println(scanner.Err())
+	}
 }
